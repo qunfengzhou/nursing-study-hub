@@ -1,5 +1,5 @@
-const CACHE = 'nursing-study-hub-v3-1-shell';
-const SHELL=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+const CACHE = 'nursing-study-hub-v3-2-shell';
+const SHELL=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png','./sync.js'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)));
 });
