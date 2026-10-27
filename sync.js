@@ -24,7 +24,7 @@ function connected(){return !!token && Date.now()<tokenExpiry-60000}
 function setButtons(){if($('syncConnect'))$('syncConnect').textContent=connected()?`Connected: ${email||'Google account'}`:'Connect Google Drive';if($('syncNow'))$('syncNow').disabled=!connected()||busy||!!conflictPending;if($('syncDisconnect'))$('syncDisconnect').disabled=!token;if($('syncResolve'))$('syncResolve').classList.toggle('hidden',!conflictPending)}
 function persistMeta(){localStorage.setItem(META_KEY,JSON.stringify(meta))}
 function normalize(x){return {cards:Array.isArray(x.cards)?x.cards:[],questions:Array.isArray(x.questions)?x.questions:[],progress:x.progress||{},quizHistory:x.quizHistory||{},settings:x.settings||{dailyTarget:20},dailyLog:x.dailyLog||{},retiredCardIds:Array.isArray(x.retiredCardIds)?x.retiredCardIds:[]}}
-function current(){const x=normalize(state);const ids=new Set(x.retiredCardIds);x.cards=x.cards.filter(c=>!ids.has(c.id));return x}
+function current(){const x=normalize(state);if(typeof cleanReleaseDemoData==='function')cleanReleaseDemoData(x);const ids=new Set(x.retiredCardIds);x.cards=x.cards.filter(c=>!ids.has(c.id));return x}
 function stable(x){if(Array.isArray(x))return '['+x.map(stable).join(',')+']';if(x&&typeof x==='object')return '{'+Object.keys(x).sort().map(k=>JSON.stringify(k)+':'+stable(x[k])).join(',')+'}';return JSON.stringify(x)}
 const same=(a,b)=>stable(a)===stable(b);
 function toMap(coll){return Object.fromEntries((coll||[]).filter(x=>x?.id).map(x=>[x.id,x]))}
@@ -72,6 +72,7 @@ function merge3(base,local,remote,resolutions={}){
   return {merged:out,issues};
 }
 function applyMerged(merged){
+  if(typeof cleanReleaseDemoData==='function')cleanReleaseDemoData(merged);
   const old=normalize(state);
   if(same(old,merged))return false;
   state={...state,...clone(merged)};
