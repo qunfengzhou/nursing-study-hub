@@ -9,7 +9,7 @@ const META_KEY='nsh-v32-sync-meta';
 const CLIENT_KEY='nsh-v32-oauth-client-id';
 const DEVICE_KEY='nsh-v32-device-id';
 const PREFIX='nsh-v32-snapshot-';
-const empty=()=>({cards:[],questions:[],progress:{},quizHistory:{},settings:{dailyTarget:20},dailyLog:{}});
+const empty=()=>({cards:[],questions:[],progress:{},quizHistory:{},settings:{dailyTarget:20},dailyLog:{},retiredCardIds:[]});
 const clone=x=>JSON.parse(JSON.stringify(x));
 const id=()=>crypto.randomUUID();
 let device=localStorage.getItem(DEVICE_KEY);
@@ -23,13 +23,13 @@ function notify(message){const s=$('syncStatus');if(s)s.textContent=message}
 function connected(){return !!token && Date.now()<tokenExpiry-60000}
 function setButtons(){if($('syncConnect'))$('syncConnect').textContent=connected()?`Connected: ${email||'Google account'}`:'Connect Google Drive';if($('syncNow'))$('syncNow').disabled=!connected()||busy||!!conflictPending;if($('syncDisconnect'))$('syncDisconnect').disabled=!token;if($('syncResolve'))$('syncResolve').classList.toggle('hidden',!conflictPending)}
 function persistMeta(){localStorage.setItem(META_KEY,JSON.stringify(meta))}
-function normalize(x){return {cards:Array.isArray(x.cards)?x.cards:[],questions:Array.isArray(x.questions)?x.questions:[],progress:x.progress||{},quizHistory:x.quizHistory||{},settings:x.settings||{dailyTarget:20},dailyLog:x.dailyLog||{}}}
-function current(){return normalize(state)}
+function normalize(x){return {cards:Array.isArray(x.cards)?x.cards:[],questions:Array.isArray(x.questions)?x.questions:[],progress:x.progress||{},quizHistory:x.quizHistory||{},settings:x.settings||{dailyTarget:20},dailyLog:x.dailyLog||{},retiredCardIds:Array.isArray(x.retiredCardIds)?x.retiredCardIds:[]}}
+function current(){const x=normalize(state);const ids=new Set(x.retiredCardIds);x.cards=x.cards.filter(c=>!ids.has(c.id));return x}
 function stable(x){if(Array.isArray(x))return '['+x.map(stable).join(',')+']';if(x&&typeof x==='object')return '{'+Object.keys(x).sort().map(k=>JSON.stringify(k)+':'+stable(x[k])).join(',')+'}';return JSON.stringify(x)}
 const same=(a,b)=>stable(a)===stable(b);
 function toMap(coll){return Object.fromEntries((coll||[]).filter(x=>x?.id).map(x=>[x.id,x]))}
 function fromMap(v){return Object.values(v).sort((a,b)=>String(a.id).localeCompare(String(b.id)))}
-function fields(x){return {cards:toMap(x.cards),questions:toMap(x.questions),progress:x.progress||{},quizHistory:x.quizHistory||{},settings:x.settings||{},dailyLog:x.dailyLog||{}}}
+function fields(x){return {cards:toMap(x.cards),questions:toMap(x.questions),progress:x.progress||{},quizHistory:x.quizHistory||{},settings:x.settings||{},dailyLog:x.dailyLog||{},retiredCardIds:Array.isArray(x.retiredCardIds)?x.retiredCardIds:[]}}
 const DEL=Symbol('absent');
 function resolve3(base,local,remote,context,conflicts,resolved){
   const out={};
@@ -50,7 +50,12 @@ function resolve3(base,local,remote,context,conflicts,resolved){
   return out;
 }
 function merge3(base,local,remote,resolutions={}){
-  base=fields(normalize(base));local=fields(normalize(local));remote=fields(normalize(remote));
+  base=normalize(base);local=normalize(local);remote=normalize(remote);
+  const retiredUnion=[...new Set([...(base.retiredCardIds||[]),...(local.retiredCardIds||[]),...(remote.retiredCardIds||[])])];
+  base=fields(base);local=fields(local);remote=fields(remote);
+  // A retired flashcard is no longer active. Ignore concurrent edits to its content,
+  // but keep progress/history and the grow-only retirement register.
+  for(const retiredId of retiredUnion){delete base.cards[retiredId];delete local.cards[retiredId];delete remote.cards[retiredId]}
   const issues=[],out={};
   for(const cat of ['cards','questions','progress','quizHistory','settings','dailyLog']){
     // Daily logs contain IDs: preserve any rated-card IDs seen on either device.
@@ -60,7 +65,10 @@ function merge3(base,local,remote,resolutions={}){
       }
     }else out[cat]=resolve3(base[cat],local[cat],remote[cat],cat,issues,resolutions);
   }
-  out.cards=fromMap(out.cards);out.questions=fromMap(out.questions);
+  // Grow-only retirement register. Removing a card on any device prevents stale snapshots resurrecting it.
+  out.retiredCardIds=retiredUnion.sort();
+  const retired=new Set(out.retiredCardIds);
+  out.cards=fromMap(out.cards).filter(card=>!retired.has(card.id));out.questions=fromMap(out.questions);
   return {merged:out,issues};
 }
 function applyMerged(merged){
