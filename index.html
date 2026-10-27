@@ -47,6 +47,30 @@ aside .navs{clear:both;min-width:0}
 </main></div><div id="toast"></div><script>
 const BUNDLED={"cards":[],"questions":[]};
 const KEY='nursing-study-hub-v3',OLD_KEY='nursing-study-hub-v2';let state;try{state=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY))}catch{}if(!state||!Array.isArray(state.cards)||!Array.isArray(state.questions))state={cards:BUNDLED.cards,questions:BUNDLED.questions,progress:{},quizHistory:{}};state.progress ||= {};state.quizHistory ||= {};state.settings ||= {dailyTarget:20};state.dailyLog ||= {};state.retiredCardIds ||= [];state.settings.subjects ||= ['Nursing','General'];state.settings.favorites ||= [];state.settings.courseSubjects ||= {}; 
+/* V3.4 release: clean historical QA-only records without clearing real study history. */
+function cleanReleaseDemoData(data){
+  if(!data || !Array.isArray(data.cards))return data;
+  data.settings ||= {};
+  data.settings.courseSubjects ||= {};
+  const qaCourse = value => /^(?:QA Sandbox|Migration Demo)(?:\b|\s*\/)/i.test(String(value||''));
+  const removed = data.cards.filter(c=>qaCourse(c.course));
+  if(removed.length){
+    data.retiredCardIds=[...new Set([...(data.retiredCardIds||[]),...removed.map(c=>c.id).filter(Boolean)])];
+    data.cards=data.cards.filter(c=>!qaCourse(c.course));
+  }
+  if(Array.isArray(data.questions))data.questions=data.questions.filter(q=>!qaCourse(q.course));
+  for(const course of Object.keys(data.settings.courseSubjects))if(qaCourse(course))delete data.settings.courseSubjects[course];
+  const activeSubjects=new Set([...data.cards,...(data.questions||[])].map(c=>
+    data.settings.courseSubjects[c.course] || c.subject ||
+    (['Microbiology','Pathophysiology'].includes(c.course)?'Nursing':'General')));
+  const unwanted=new Set(['Sports','Finance','Practical Skills']);
+  const original=Array.isArray(data.settings.subjects)?data.settings.subjects:[];
+  data.settings.subjects=[...new Set(['Nursing','General',...original.filter(sub=>!unwanted.has(sub)||activeSubjects.has(sub)),...activeSubjects])];
+  return data;
+}
+const releaseBefore=JSON.stringify(state);
+cleanReleaseDemoData(state);
+if(releaseBefore!==JSON.stringify(state))try{localStorage.setItem(KEY,JSON.stringify(state))}catch{}
 let replacementCandidate=null;let dailyQueue=[],dailyIndex=0,dailyFlipped=false,dailyTranslation=false,dailyUndo=null,dailyActive=false,dailyReverse=false;let filter={subject:'All subjects',course:'All courses',unit:'All units',chapter:'All chapters'},cardPos=0,quizPos=0,flipped=false,translation=false,answered=false,pending=[];
 const el=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));window.dispatchEvent(new Event('studyhub:changed'))}catch(e){toast('Browser storage is full. Export a backup.')}}function toast(s){let t=el('toast');t.textContent=s;t.style.display='block';setTimeout(()=>t.style.display='none',3600)}
