@@ -49,6 +49,25 @@ function resolve3(base,local,remote,context,conflicts,resolved){
   }
   return out;
 }
+// Viewed dates only grow; a new round advances a boundary instead of deleting history.
+function mergeFreeReview(...sources){
+ const views={},sessions={};
+ const timestamp=x=>typeof x==='number'&&Number.isFinite(x)&&x>0?x:0;
+ for(const raw of sources){
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))continue;
+  for(const [key,value] of Object.entries(raw.views||{})){const t=timestamp(value);if(t)Object.defineProperty(views,key,{value:Math.max(Object.hasOwn(views,key)?views[key]:0,t),writable:true,enumerable:true,configurable:true})}
+  for(const [key,value] of Object.entries(raw.sessions||{})){
+   if(!value||typeof value!=='object'||!timestamp(value.updatedAt)||!value.filter||!['subject','course','unit','chapter'].every(k=>typeof value.filter[k]==='string'))continue;
+   const old=Object.hasOwn(sessions,key)?sessions[key]:null;
+   const chooseNew=!old||value.updatedAt>old.updatedAt||(value.updatedAt===old.updatedAt&&stable({...value,roundStartedAt:0})>stable({...old,roundStartedAt:0}));
+   const chosen=clone(chooseNew?value:old);
+   chosen.roundStartedAt=Math.max(timestamp(old?.roundStartedAt),timestamp(value.roundStartedAt));
+   Object.defineProperty(sessions,key,{value:chosen,writable:true,enumerable:true,configurable:true});
+  }
+ }
+ return {version:1,views,sessions};
+}
+
 function merge3(base,local,remote,resolutions={}){
   base=normalize(base);local=normalize(local);remote=normalize(remote);
   const retiredUnion=[...new Set([...(base.retiredCardIds||[]),...(local.retiredCardIds||[]),...(remote.retiredCardIds||[])])];
@@ -63,6 +82,13 @@ function merge3(base,local,remote,resolutions={}){
       out.dailyLog={};for(const day of new Set([...Object.keys(base.dailyLog),...Object.keys(local.dailyLog),...Object.keys(remote.dailyLog)])){
         out.dailyLog[day]=[...new Set([...(local.dailyLog[day]||[]),...(remote.dailyLog[day]||[])])]
       }
+    }else if(cat==='settings'){
+      const b={...base.settings},l={...local.settings},r={...remote.settings};
+      const hasBrowsing=[b,l,r].some(x=>Object.hasOwn(x,'freeReview'));
+      const browsing=hasBrowsing?mergeFreeReview(b.freeReview,l.freeReview,r.freeReview):null;
+      delete b.freeReview;delete l.freeReview;delete r.freeReview;
+      out.settings=resolve3(b,l,r,cat,issues,resolutions);
+      if(hasBrowsing)out.settings.freeReview=browsing;
     }else out[cat]=resolve3(base[cat],local[cat],remote[cat],cat,issues,resolutions);
   }
   // Grow-only retirement register. Removing a card on any device prevents stale snapshots resurrecting it.
@@ -75,8 +101,12 @@ function applyMerged(merged){
   if(typeof cleanReleaseDemoData==='function')cleanReleaseDemoData(merged);
   const old=normalize(state);
   if(same(old,merged))return false;
+  const oldSettings={...old.settings},newSettings={...merged.settings};
+  delete oldSettings.freeReview;delete newSettings.freeReview;
+  const browsingOnly=same({...old,cards:toMap(old.cards),questions:toMap(old.questions),settings:oldSettings},{...merged,cards:toMap(merged.cards),questions:toMap(merged.questions),settings:newSettings});
   state={...state,...clone(merged)};
-  dailyActive=false;dailyQueue=[];save();render();
+  if(!browsingOnly){dailyActive=false;dailyQueue=[];}
+  save();render();
   return true;
 }
 async function loadGIS(){
@@ -216,5 +246,6 @@ function init(){
  notify('Offline-first. Connect Google Drive to sync across devices.');setButtons();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
-window.__nshSyncTest={normalize,merge3,same};
+window.__nshSyncTest={normalize,merge3,mergeFreeReview,applyMerged,same};
 })();
+
