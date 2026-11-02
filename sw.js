@@ -1,4 +1,4 @@
-const CACHE = 'nursing-study-hub-v3-4-1-cleanup-shell';
+const CACHE = 'nursing-study-hub-v3-4-2-ipa-policy-shell';
 const SHELL=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png','./sync.js'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)));
@@ -21,3 +21,4 @@ self.addEventListener('fetch', event => {
   }
   event.respondWith(caches.match(request).then(hit=>hit || fetch(request)));
 });
+
