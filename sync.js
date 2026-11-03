@@ -84,11 +84,21 @@ function merge3(base,local,remote,resolutions={}){
       }
     }else if(cat==='settings'){
       const b={...base.settings},l={...local.settings},r={...remote.settings};
-      const hasBrowsing=[b,l,r].some(x=>Object.hasOwn(x,'freeReview'));
-      const browsing=hasBrowsing?mergeFreeReview(b.freeReview,l.freeReview,r.freeReview):null;
-      delete b.freeReview;delete l.freeReview;delete r.freeReview;
-      out.settings=resolve3(b,l,r,cat,issues,resolutions);
-      if(hasBrowsing)out.settings.freeReview=browsing;
+      const mergedSpecial={};
+      for(const key of ['freeReview','quizReview','quizPractice']){
+        if([b,l,r].some(x=>Object.hasOwn(x,key))){
+          if(key==='quizPractice'){
+            const events={};
+            for(const source of [b[key],l[key],r[key]])for(const [id,event] of Object.entries(source?.events||{})){
+              if(!event||event.id!==id||typeof event.questionId!=='string'||typeof event.correct!=='boolean'||!Number.isFinite(event.at))continue;
+              if(!Object.hasOwn(events,id)||stable(event)>stable(events[id]))Object.defineProperty(events,id,{value:clone(event),enumerable:true,writable:true,configurable:true});
+            }
+            mergedSpecial[key]={version:1,events};
+          }else mergedSpecial[key]=mergeFreeReview(b[key],l[key],r[key]);
+        }
+        delete b[key];delete l[key];delete r[key];
+      }
+      out.settings={...resolve3(b,l,r,cat,issues,resolutions),...mergedSpecial};
     }else out[cat]=resolve3(base[cat],local[cat],remote[cat],cat,issues,resolutions);
   }
   // Grow-only retirement register. Removing a card on any device prevents stale snapshots resurrecting it.
@@ -102,10 +112,10 @@ function applyMerged(merged){
   const old=normalize(state);
   if(same(old,merged))return false;
   const oldSettings={...old.settings},newSettings={...merged.settings};
-  delete oldSettings.freeReview;delete newSettings.freeReview;
+  for(const key of ['freeReview','quizReview','quizPractice']){delete oldSettings[key];delete newSettings[key]}
   const browsingOnly=same({...old,cards:toMap(old.cards),questions:toMap(old.questions),settings:oldSettings},{...merged,cards:toMap(merged.cards),questions:toMap(merged.questions),settings:newSettings});
   state={...state,...clone(merged)};
-  if(!browsingOnly){dailyActive=false;dailyQueue=[];}
+  if(!browsingOnly){dailyActive=false;dailyQueue=[];if(typeof stopDailyQuiz==='function')stopDailyQuiz();}
   save();render();
   return true;
 }
@@ -248,4 +258,5 @@ function init(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 window.__nshSyncTest={normalize,merge3,mergeFreeReview,applyMerged,same};
 })();
+
 
