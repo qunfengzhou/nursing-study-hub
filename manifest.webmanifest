@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Study Hub",
   "short_name": "Study Hub",
-  "description": "Offline-first multi-subject flashcards, original quizzes and daily review",
+  "description": "Multi-subject flashcards, source-backed quizzes and daily practice",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -10,13 +10,13 @@
   "theme_color": "#14263f",
   "icons": [
     {
-      "src": "./icon-192.png",
+      "src": "./icon-192-v351.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "./icon-512.png",
+      "src": "./icon-512-v351.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
