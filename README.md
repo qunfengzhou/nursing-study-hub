@@ -1,4 +1,11 @@
-# Nursing Study Hub V3.2 — Offline PWA + Google Drive Sync
+# Study Hub
+
+**Current deployed version: V3.5.2.** See [CHANGELOG.md](CHANGELOG.md) for version history and [SYNC_V351.md](SYNC_V351.md) for the current upload, download, and recovery flow.
+
+## Legacy V3.2 setup notes
+
+The notes below describe the earlier V3.2 implementation. In particular, automatic synchronization and per-record cloud merging are historical behavior, superseded by the manual flow documented above.
+
 
 A public-safe static site for GitHub Pages. It **does not contain the user's course materials, answer keys, or study progress**. Import an existing V3 backup into the app's Library to get started.
 
