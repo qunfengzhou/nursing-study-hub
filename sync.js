@@ -32,6 +32,25 @@ function validateProgress(x){
  }
  return clone(x);
 }
+// Library restoration fills missing IDs; it never overwrites matching local card text.
+function libraryOf(data=state){return validateLibrary({version:1,cards:clone(data.cards||[]),questions:clone(data.questions||[]),retiredCardIds:clone(data.retiredCardIds||[]),settings:{subjects:clone(data.settings?.subjects||['Nursing','General']),courseSubjects:clone(data.settings?.courseSubjects||{})}})}
+function validateLibrary(raw){
+ if(!object(raw)||!Array.isArray(raw.cards)||!Array.isArray(raw.questions)||!Array.isArray(raw.retiredCardIds)||raw.retiredCardIds.some(x=>typeof x!=='string')||!object(raw.settings)||!Array.isArray(raw.settings.subjects)||raw.settings.subjects.some(x=>typeof x!=='string')||!object(raw.settings.courseSubjects)||Object.values(raw.settings.courseSubjects).some(x=>typeof x!=='string'))throw Error('Invalid library backup. Nothing was restored.');
+ const x=clone(raw);cleanReleaseDemoData(x);
+ if(!x.cards.every(validCard)||!x.questions.every(validQuiz)||new Set(x.cards.map(c=>c.id)).size!==x.cards.length||new Set(x.questions.map(q=>q.id)).size!==x.questions.length)throw Error('Library backup contains invalid records or sources.');
+ const retired=new Set(x.retiredCardIds);x.cards=x.cards.filter(c=>!retired.has(c.id));return x;
+}
+function mergedLibrary(raw){const source=validateLibrary(raw),retired=[...new Set([...(state.retiredCardIds||[]),...source.retiredCardIds])],gone=new Set(retired),cards=new Map(state.cards.map(c=>[c.id,clone(c)])),questions=new Map(state.questions.map(q=>[q.id,clone(q)]));let addedCards=0,addedQuestions=0;
+ for(const c of source.cards)if(!cards.has(c.id)&&!gone.has(c.id)){cards.set(c.id,clone(c));addedCards++}
+ for(const q of source.questions)if(!questions.has(q.id)){questions.set(q.id,clone(q));addedQuestions++}
+ const removed=state.cards.filter(c=>gone.has(c.id)).length;
+ const settings={subjects:[...new Set([...(state.settings.subjects||['Nursing','General']),...source.settings.subjects])],courseSubjects:{...source.settings.courseSubjects,...state.settings.courseSubjects}};
+ const data={version:1,cards:[...cards.values()].filter(c=>!gone.has(c.id)),questions:[...questions.values()],retiredCardIds:retired,settings};cleanReleaseDemoData(data);return {data,addedCards,addedQuestions,removed};
+}
+async function legacyLibraries(){const files=await listFiles('nsh-v32-snapshot-'),latest=new Map();for(const f of files){const key=f.name.match(/^nsh-v32-snapshot-([0-9a-f-]{36})-/)?.[1]||f.id;const prior=latest.get(key);if(!prior||(f.createdTime||'')>(prior.createdTime||''))latest.set(key,f)}const sources=[];let retired=[];
+ for(const f of latest.values()){const p=await (await api('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(f.id)+'?alt=media')).json();if(p.schema!==32||!object(p.data)||!Array.isArray(p.data.cards)||!Array.isArray(p.data.questions))throw Error('An old cloud backup could not be validated. Use a complete device to upload a fresh library.');const library=libraryOf(p.data),progress=validateProgress(progressOf(p.data));retired.push(...library.retiredCardIds);if(!library.cards.length&&!library.questions.length)continue;sources.push({id:f.id,name:`Historical backup · ${new Date(f.createdTime||p.createdAt).toLocaleString()} · ${library.cards.length} cards / ${library.questions.length} questions · ${library.cards.filter(c=>typeof c.ipa==='string'&&c.ipa.trim()).length} IPA entries`,library,progress})}
+ retired=[...new Set(retired)].sort();for(const source of sources)source.library=validateLibrary({...source.library,retiredCardIds:retired});return sources;
+}
 async function digest(value){const bytes=new TextEncoder().encode(stable(value));return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join('')}
 function connected(){return !!account&&!!token&&Date.now()<expiry-60000}
 function notify(s){$('syncStatus').textContent=s}
@@ -41,7 +60,7 @@ function hasProgress(p){return Object.keys(p.progress).length||Object.keys(p.qui
 function setButtons(){
  $('syncConnect').disabled=busy;$('syncConnect').textContent=connected()?`Connected: ${email}`:'Connect Google Drive';
  for(const id of ['syncUpload','syncDownload','syncCheck'])$(id).disabled=busy||!connected();
- $('syncDisconnect').disabled=busy||!token;$('syncConfirmDownload').disabled=busy||!connected()||!pending||pending.dirty&&!$('syncReplaceAck').checked;
+ $('syncDisconnect').disabled=busy||!token;$('syncConfirmDownload').disabled=busy||!connected()||!pending||pending.needsSource&&!pending.library||pending.dirty&&!$('syncReplaceAck').checked||pending.legacy&&!$('syncLegacyAck').checked;
  $('syncUseBranch').disabled=busy||!connected()||!cloud||cloud.heads.length<2;
  $('syncLocalState').textContent=meta.baseline?(dirty()?'This device has progress not uploaded to the current cloud version.':'This device matches its last uploaded or downloaded progress.'):'This device has not joined the new progress flow yet.';
 }
@@ -63,8 +82,8 @@ function graphHeads(files){
  if(visited!==files.length)throw Error('Invalid cloud revision cycle.');
  return files.filter(f=>!referenced.has(f.id)).sort((a,b)=>a.id.localeCompare(b.id));
 }
-async function listFiles(){const files=[];let page='';const tokens=new Set();do{const params=new URLSearchParams({spaces:'appDataFolder',q:`trashed = false and name contains '${PREFIX}'`,fields:'nextPageToken,incompleteSearch,files(id,name,createdTime,appProperties)',pageSize:'1000'});if(page)params.set('pageToken',page);const j=await (await api('https://www.googleapis.com/drive/v3/files?'+params)).json();if(j.incompleteSearch||!Array.isArray(j.files))throw Error('Drive did not return complete history. Retry later.');files.push(...j.files.filter(f=>f.name?.startsWith(PREFIX)));page=j.nextPageToken||'';if(page&&tokens.has(page))throw Error('Drive pagination repeated.');tokens.add(page)}while(page);return files}
-async function readRevision(file){const p=await (await api('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?alt=media')).json();if(p.schema!==351||p.kind!=='study-hub-progress'||p.account!==account||typeof p.device!=='string'||typeof p.deviceName!=='string'||!Number.isFinite(Date.parse(p.createdAt))||!Array.isArray(p.parents)||p.parents.some(x=>typeof x!=='string'))throw Error('Invalid cloud progress revision.');const expected=Object.keys(file.appProperties).filter(k=>/^parent\d+$/.test(k)).map(k=>file.appProperties[k]).sort();if(!same([...p.parents].sort(),expected))throw Error('Cloud revision metadata does not match.');validateProgress(p.data);const signed={schema:p.schema,kind:p.kind,account:p.account,device:p.device,deviceName:p.deviceName,createdAt:p.createdAt,parents:p.parents,data:p.data};if(await digest(signed)!==file.appProperties.digest)throw Error('Cloud progress checksum failed. Nothing was changed.');return {file,payload:p}}
+async function listFiles(prefix=PREFIX){const files=[];let page='';const tokens=new Set();do{const params=new URLSearchParams({spaces:'appDataFolder',q:`trashed = false and name contains '${prefix}'`,fields:'nextPageToken,incompleteSearch,files(id,name,createdTime,appProperties)',pageSize:'1000'});if(page)params.set('pageToken',page);const j=await (await api('https://www.googleapis.com/drive/v3/files?'+params)).json();if(j.incompleteSearch||!Array.isArray(j.files))throw Error('Drive did not return complete history. Retry later.');files.push(...j.files.filter(f=>f.name?.startsWith(prefix)));page=j.nextPageToken||'';if(page&&tokens.has(page))throw Error('Drive pagination repeated.');tokens.add(page)}while(page);return files}
+async function readRevision(file){const p=await (await api('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?alt=media')).json();if(p.schema!==351||p.kind!=='study-hub-progress'||p.account!==account||typeof p.device!=='string'||typeof p.deviceName!=='string'||!Number.isFinite(Date.parse(p.createdAt))||!Array.isArray(p.parents)||p.parents.some(x=>typeof x!=='string'))throw Error('Invalid cloud progress revision.');const expected=Object.keys(file.appProperties).filter(k=>/^parent\d+$/.test(k)).map(k=>file.appProperties[k]).sort();if(!same([...p.parents].sort(),expected))throw Error('Cloud revision metadata does not match.');validateProgress(p.data);const signed={schema:p.schema,kind:p.kind,account:p.account,device:p.device,deviceName:p.deviceName,createdAt:p.createdAt,parents:p.parents,data:p.data};if(Object.hasOwn(p,'library')){validateLibrary(p.library);signed.library=p.library}if(await digest(signed)!==file.appProperties.digest)throw Error('Cloud progress checksum failed. Nothing was changed.');return {file,payload:p}}
 function cloudSignature(c){return c.heads.map(h=>h.file.id+':'+h.file.appProperties.digest).sort().join('|')}
 async function readCloud(){const files=await listFiles(),heads=graphHeads(files);const entries=[];for(const f of heads)entries.push(await readRevision(f));return {heads:entries,files}}
 function formatTime(h){return new Date(h.file.createdTime||h.payload.createdAt).toLocaleString()}
@@ -76,16 +95,16 @@ function showCloud(c){
  else{$('syncCloudState').textContent='Two or more devices uploaded at the same time. All versions are retained. Choose the progress version to use before downloading.';for(const h of c.heads){const o=document.createElement('option');o.value=h.file.id;o.textContent=`${h.payload.deviceName} · ${formatTime(h)} · ${counts(h.payload.data)}`;$('syncBranchChoice').append(o)}}
  setButtons();
 }
-function clearPending(){pending=null;$('syncDownloadPreview').classList.add('hidden');$('syncReplaceAck').checked=false;setButtons()}
+function clearPending(){pending=null;$('syncDownloadPreview').classList.add('hidden');$('syncReplaceAck').checked=false;$('syncLibrarySource').replaceChildren();$('syncLegacyRecovery').classList.add('hidden');setButtons()}
 async function run(action){if(busy)return;let e;try{e=operationEpoch()}catch(err){notify(err.message);return}busy=true;setButtons();try{await action(e)}catch(err){notify(err.message)}finally{busy=false;setButtons()}}
 async function checkCloud(){return run(async e=>{const c=await readCloud();unchangedSession(e);showCloud(c);notify('Cloud status checked. No progress was uploaded or downloaded.');})}
 async function openRecoveryDB(){return new Promise((resolve,reject)=>{const request=indexedDB.open('study-hub-recovery-v351',1);request.onupgradeneeded=()=>{request.result.createObjectStore('copies',{keyPath:'id'});request.result.createObjectStore('summaries',{keyPath:'id'})};request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(Error('Cannot create a recovery copy. No progress was replaced.'));request.onblocked=()=>reject(Error('Recovery storage is busy. Close other Study Hub tabs and retry.'))})}
 async function checkpoint(reason){const db=await openRecoveryDB();const copy={id:crypto.randomUUID(),at:new Date().toISOString(),account,reason,data:{backupVersion:3,exportedAt:new Date().toISOString(),...clone(state)}};await new Promise((resolve,reject)=>{const tx=db.transaction(['copies','summaries'],'readwrite');tx.objectStore('copies').add(copy);tx.objectStore('summaries').add({id:copy.id,at:copy.at,account:copy.account,reason:copy.reason});tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(Error('Recovery storage is unavailable or full. No progress was replaced.'))}).finally(()=>db.close());await listRecoveries();return copy.id}
 async function listRecoveries(){try{const db=await openRecoveryDB();const copies=await new Promise((resolve,reject)=>{const tx=db.transaction('summaries','readonly'),r=tx.objectStore('summaries').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});db.close();const selected=$('syncRecoveryChoice').value;$('syncRecoveryChoice').replaceChildren();for(const c of copies.sort((a,b)=>b.at.localeCompare(a.at))){const o=document.createElement('option');o.value=c.id;o.textContent=`${new Date(c.at).toLocaleString()} · ${c.reason}`;$('syncRecoveryChoice').append(o)}if(copies.some(c=>c.id===selected))$('syncRecoveryChoice').value=selected;$('syncExportRecovery').disabled=!copies.length;}catch{$('syncExportRecovery').disabled=true}}
 async function exportRecovery(){try{const db=await openRecoveryDB();const c=await new Promise((resolve,reject)=>{const r=db.transaction('copies','readonly').objectStore('copies').get($('syncRecoveryChoice').value);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});db.close();if(c)download('study-hub-recovery-'+c.at.replace(/[:.]/g,'-')+'.json',c.data)}catch{notify('Unable to export the recovery copy.')}}
-async function createRevision(data,parents){
+async function createRevision(data,parents,library=libraryOf()){
  if(parents.length>20)throw Error('Too many concurrent versions. Export backups before continuing.');
- const payload={schema:351,kind:'study-hub-progress',account,device,deviceName:($('syncDeviceName').value||defaultName).trim().slice(0,60)||defaultName,createdAt:new Date().toISOString(),parents:[...parents].sort(),data:validateProgress(data)};
+ const payload={schema:351,kind:'study-hub-progress',account,device,deviceName:($('syncDeviceName').value||defaultName).trim().slice(0,60)||defaultName,createdAt:new Date().toISOString(),parents:[...parents].sort(),data:validateProgress(data)};if(library)payload.library=validateLibrary(library);
  const checksum=await digest(payload),props={kind:'progress351',schema:'351',digest:checksum};payload.parents.forEach((parent,i)=>props['parent'+i]=parent);
  const name=PREFIX+crypto.randomUUID()+'.json',boundary='nsh_'+crypto.randomUUID().replace(/-/g,'');
  const metadata={name,mimeType:'application/json',parents:['appDataFolder'],appProperties:props};
@@ -93,22 +112,23 @@ async function createRevision(data,parents){
  return (await api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,createdTime,appProperties',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body})).json();
 }
 async function uploadProgress(){clearPending();return run(async e=>{
- const data=validateProgress(progressOf()),c=await readCloud();unchangedSession(e);showCloud(c);
+ const data=validateProgress(progressOf()),library=libraryOf(),c=await readCloud();unchangedSession(e);showCloud(c);
  if(c.heads.length>1)throw Error('Choose the current cloud version first. No version was overwritten.');
+ if(!library.cards.length&&!library.questions.length)throw Error('This device has no library. Use Download progress to restore cards and questions before uploading.');
  const head=c.heads[0];
- if(head&&meta.head!==head.file.id){if(same(data,head.payload.data)){meta={head:head.file.id,baseline:data};persistMeta();notify('This device already matches cloud progress.');return}throw Error('Cloud progress is newer than this device’s last download. Download progress before uploading. Your local records are unchanged.');}
- if(head&&same(data,head.payload.data)){meta={head:head.file.id,baseline:data};persistMeta();notify('Cloud progress is already up to date.');return}
+ if(head&&meta.head!==head.file.id){if(same(data,head.payload.data)){meta={head:head.file.id,baseline:data};persistMeta();}else throw Error('Cloud progress is newer than this device’s last download. Download progress before uploading. Your local records are unchanged.');}
+ if(head&&same(data,head.payload.data)&&same(library,head.payload.library)){meta={head:head.file.id,baseline:data};persistMeta();notify('Cloud progress is already up to date.');return}
  if(!head&&!confirm('Start the new cloud progress flow with THIS device? Use the phone with your most complete progress. Old backups and all word banks will remain unchanged.'))return;
  await checkpoint(head?'Before upload':'Before first upload');unchangedSession(e);
- const currentCloud=await readCloud();unchangedSession(e);if(cloudSignature(currentCloud)!==cloudSignature(c))throw Error('Cloud changed before upload. Check and download the current progress.');if(!same(progressOf(),data))throw Error('You studied during upload preparation. Retry to include the latest progress.');
- const created=await createRevision(data,head?[head.file.id]:[]);unchangedSession(e);
+ const currentCloud=await readCloud();unchangedSession(e);if(cloudSignature(currentCloud)!==cloudSignature(c))throw Error('Cloud changed before upload. Check and download the current progress.');if(!same(progressOf(),data)||!same(libraryOf(),library))throw Error('You studied during upload preparation. Retry to include the latest progress.');
+ const created=await createRevision(data,head?[head.file.id]:[],library);unchangedSession(e);
  const after=await readCloud();unchangedSession(e);showCloud(after);
  if(after.heads.length!==1||after.heads[0].file.id!==created.id)throw Error('Concurrent upload detected. Every version is retained; choose the current version below.');
  meta={head:created.id,baseline:data};persistMeta();notify(same(progressOf(),data)?'Progress uploaded. Other devices can now choose Download progress.':'Progress uploaded. Newer study activity on this device still needs another upload.');
  })}
-async function applyProgress(data,e){
+async function applyProgress(data,e,library){
  validateProgress(data);unchangedSession(e);
- const next=clone(state);next.progress=clone(data.progress);next.quizHistory=clone(data.quizHistory);next.dailyLog=clone(data.dailyLog);next.settings||={};
+ const next=clone(state);if(library){const merged=mergedLibrary(library).data;next.cards=merged.cards;next.questions=merged.questions;next.retiredCardIds=merged.retiredCardIds;next.settings={...next.settings,...merged.settings}}next.progress=clone(data.progress);next.quizHistory=clone(data.quizHistory);next.dailyLog=clone(data.dailyLog);next.settings||={};
  for(const key of settingsKeys){if(Object.hasOwn(data.settings,key))Object.defineProperty(next.settings,key,{value:clone(data.settings[key]),enumerable:true,writable:true,configurable:true});else delete next.settings[key]}
  next.settings.dailyTarget||=20;next.settings.favorites||=[];
  try{localStorage.setItem(KEY,JSON.stringify(next))}catch{throw Error('Device storage is full. Cloud progress was not applied.');}
@@ -116,23 +136,33 @@ async function applyProgress(data,e){
  // Restore visible continuation only when the user next opens its page.
  window.dispatchEvent(new Event('studyhub:changed'));render();
 }
+function renderDownloadPreview(){if(!pending)return;const p=pending,merged=p.library?mergedLibrary(p.library):null;
+ $('syncPreviewText').textContent=`${p.sourceLabel} · ${counts(p.data)}. ${merged?`Restore ${merged.addedCards} missing cards and ${merged.addedQuestions} missing questions; ${merged.removed} known retired cards stay inactive. Matching local explanations, translations and IPA are kept. `:'Choose a library source below to recover this empty device. '}A full recovery copy will be saved first.`;
+ $('syncReplaceWarning').classList.toggle('hidden',!p.dirty);$('syncLegacyRecovery').classList.toggle('hidden',!p.legacy);setButtons();
+}
+function selectLibrarySource(){if(!pending)return;const source=pending.sources.find(x=>x.id===$('syncLibrarySource').value);pending.library=source?.library||null;if(!pending.head&&source){pending.data=source.progress;pending.dirty=hasProgress(pending.local)&&!same(pending.local,pending.data)}$('syncReplaceAck').checked=false;$('syncLegacyAck').checked=false;renderDownloadPreview()}
 async function downloadProgress(){clearPending();return run(async e=>{
- const local=progressOf(),c=await readCloud();unchangedSession(e);showCloud(c);if(!c.heads.length)throw Error('No cloud progress yet. Upload first from your most up-to-date phone.');if(c.heads.length!==1)throw Error('Choose one cloud progress version below before downloading.');
- const h=c.heads[0];if(!same(local,progressOf()))throw Error('Local progress changed while checking. Retry download.');
- if(same(local,h.payload.data)){meta={head:h.file.id,baseline:clone(local)};persistMeta();notify('This device already matches current cloud progress.');return}
+ const local=progressOf(),localLibrary=libraryOf(),c=await readCloud();unchangedSession(e);showCloud(c);if(c.heads.length>1)throw Error('Choose one cloud progress version below before downloading.');
+ const h=c.heads[0];let library=h?.payload.library||null,sources=[];if(library&&!library.cards.length&&!library.questions.length)library=null;
+ const activeCards=new Set(state.cards.map(x=>x.id)),activeQuestions=new Set(state.questions.map(x=>x.id)),retired=new Set(state.retiredCardIds||[]);
+ const needsSource=!h||!library&&(!state.cards.length||!state.questions.length||Object.keys(h.payload.data.progress).some(id=>!activeCards.has(id)&&!retired.has(id))||Object.keys(h.payload.data.quizHistory).some(id=>!activeQuestions.has(id)));
+ if(needsSource||!h){sources=await legacyLibraries();unchangedSession(e);if(!sources.length&&!h)throw Error('No cloud backup is available. Upload from a device containing your cards and learning records.');if(!sources.length&&needsSource)throw Error('Cloud progress exists, but no card/question backup is available. On a device that still has your library, update and upload once; then download here. Your progress was not erased.');}
+ if(!same(local,progressOf())||!same(localLibrary,libraryOf()))throw Error('Local data changed while checking. Retry download.');
+ const data=h?clone(h.payload.data):clone(local),merged=library?mergedLibrary(library):null;
+ if(h&&same(local,data)&&(!merged||same(merged.data,localLibrary))&&!needsSource){meta={head:h.file.id,baseline:clone(local)};persistMeta();notify('This device already matches cloud progress and has its library.');return}
  const isDirty=meta.baseline?!same(local,meta.baseline):!!hasProgress(local);
- pending={head:h.file.id,signature:cloudSignature(c),local:clone(local),data:clone(h.payload.data),dirty:isDirty};
- const cardIds=new Set(state.cards.map(x=>x.id)),questionIds=new Set(state.questions.map(x=>x.id));const absent=Object.keys(h.payload.data.progress).filter(id=>!cardIds.has(id)).length+Object.keys(h.payload.data.quizHistory).filter(id=>!questionIds.has(id)).length;
- $('syncPreviewText').textContent=`From ${h.payload.deviceName} · ${formatTime(h)} · ${counts(h.payload.data)}. ${absent?absent+' progress records refer to content absent on this device; those records will be retained. ':''}Word banks, explanations, IPA and question content stay unchanged. A full recovery copy will be saved before applying.`;
- $('syncReplaceWarning').classList.toggle('hidden',!isDirty);$('syncReplaceAck').checked=false;$('syncDownloadPreview').classList.remove('hidden');notify(isDirty?'This device has progress that is not in its last cloud baseline. Review before replacing it.':'Cloud progress is ready. Confirm download below.');
+ pending={head:h?.file.id||null,signature:cloudSignature(c),local:clone(local),localLibrary, data,dirty:isDirty&&!same(local,data),library,needsSource,legacy:!library&&sources.length>0,sources,sourceLabel:h?`From ${h.payload.deviceName} · ${formatTime(h)}`:'Historical cloud recovery; no current progress revision exists'};
+ if(pending.legacy){const select=$('syncLibrarySource');select.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose a historical library backup';select.append(placeholder);for(const source of sources){const o=document.createElement('option');o.value=source.id;o.textContent=source.name;select.append(o)}}
+ $('syncReplaceAck').checked=false;$('syncLegacyAck').checked=false;$('syncDownloadPreview').classList.remove('hidden');renderDownloadPreview();notify('Review content recovery and progress together, then confirm download.');
  })}
-async function confirmDownload(){if(!pending||pending.dirty&&!$('syncReplaceAck').checked)return;return run(async e=>{
- const p=pending;if(!same(progressOf(),p.local)){clearPending();throw Error('You studied after the preview. Download again to review the latest local progress.');}
+async function confirmDownload(){if(!pending||pending.needsSource&&!pending.library||pending.dirty&&!$('syncReplaceAck').checked||pending.legacy&&!$('syncLegacyAck').checked)return;return run(async e=>{
+ const p=pending;if(!same(progressOf(),p.local)||!same(libraryOf(),p.localLibrary)){clearPending();throw Error('You studied after the preview. Download again to review the latest local progress.');}
  const c=await readCloud();unchangedSession(e);showCloud(c);if(cloudSignature(c)!==p.signature){clearPending();throw Error('Cloud changed after the preview. Download again.');}
- await checkpoint('Before cloud download');unchangedSession(e);if(!same(progressOf(),p.local))throw Error('Local progress changed while saving recovery. Download again.');
- await applyProgress(p.data,e);meta={head:p.head,baseline:progressOf()};persistMeta();clearPending();notify('Cloud progress downloaded. Word banks and question content were preserved.');
+ if(p.legacy){const fresh=await legacyLibraries();unchangedSession(e);const chosen=fresh.find(x=>x.id===$('syncLibrarySource').value);if(!chosen||!same(chosen.library,p.library)||!p.head&&!same(chosen.progress,p.data)){clearPending();throw Error('Library backup changed after preview. Download again.');}}
+ await checkpoint('Before combined cloud download');unchangedSession(e);if(!same(progressOf(),p.local)||!same(libraryOf(),p.localLibrary))throw Error('Local progress changed while saving recovery. Download again.');
+ await applyProgress(p.data,e,p.library);meta={head:p.head,baseline:progressOf()};persistMeta();clearPending();notify('Download complete: missing cards/questions restored and learning progress applied. Existing matching explanations and IPA were kept.');
  })}
-async function useBranch(){return run(async e=>{const previous=cloud;if(!previous||previous.heads.length<2)return;const selected=previous.heads.find(h=>h.file.id===$('syncBranchChoice').value);if(!selected)return;if(!confirm('Make the selected progress version current for all devices? Other cloud versions remain available for recovery. Local progress is not replaced.'))return;const now=await readCloud();unchangedSession(e);if(cloudSignature(now)!==cloudSignature(previous)){showCloud(now);throw Error('Cloud changed. Review the choices again.');}await createRevision(selected.payload.data,now.heads.map(h=>h.file.id));unchangedSession(e);const after=await readCloud();unchangedSession(e);showCloud(after);clearPending();notify(after.heads.length===1?'Cloud version selected. Choose Download progress to apply it to this device.':'Another upload happened concurrently. Review the retained versions again.');})}
+async function useBranch(){return run(async e=>{const previous=cloud;if(!previous||previous.heads.length<2)return;const selected=previous.heads.find(h=>h.file.id===$('syncBranchChoice').value);if(!selected)return;if(!confirm('Make the selected progress version current for all devices? Other cloud versions remain available for recovery. Local progress is not replaced.'))return;const now=await readCloud();unchangedSession(e);if(cloudSignature(now)!==cloudSignature(previous)){showCloud(now);throw Error('Cloud changed. Review the choices again.');}const selectedLibrary=selected.payload.library?clone(selected.payload.library):(state.cards.length||state.questions.length?libraryOf():null);if(selectedLibrary)selectedLibrary.retiredCardIds=[...new Set([...(state.retiredCardIds||[]),...now.heads.flatMap(h=>h.payload.library?.retiredCardIds||[]),...selectedLibrary.retiredCardIds])];await createRevision(selected.payload.data,now.heads.map(h=>h.file.id),selectedLibrary);unchangedSession(e);const after=await readCloud();unchangedSession(e);showCloud(after);clearPending();notify(after.heads.length===1?'Cloud version selected. Choose Download progress to apply it to this device.':'Another upload happened concurrently. Review the retained versions again.');})}
 async function loadGIS(){if(window.google?.accounts?.oauth2)return;await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.async=true;s.onload=resolve;s.onerror=()=>reject(Error('Unable to load Google sign-in.'));document.head.append(s)})}
 async function connect(){if(busy)return;const clientId=$('syncClientId').value.trim();if(!/^\d+-[\w-]+\.apps\.googleusercontent\.com$/.test(clientId)){notify('Enter a valid Google OAuth Web Client ID.');return}localStorage.setItem(CLIENT_KEY,clientId);busy=true;setButtons();notify('Opening Google sign-in…');try{await loadGIS();tokenClient=google.accounts.oauth2.initTokenClient({client_id:clientId,scope:SCOPE,callback:async response=>{
  if(response.error){busy=false;notify('Google authorization failed: '+response.error);setButtons();return}epoch++;const e=epoch;token=response.access_token;expiry=Date.now()+(response.expires_in||3600)*1000;account='';cloud=null;pending=null;$('syncDownloadPreview').classList.add('hidden');
@@ -141,10 +171,11 @@ async function connect(){if(busy)return;const clientId=$('syncClientId').value.t
 function disconnect(){if(busy)return;epoch++;token='';expiry=0;account='';email='';meta={};cloud=null;clearPending();$('syncBranches').classList.add('hidden');$('syncCloudState').textContent='Not connected.';notify('Disconnected. Local study records are preserved.');setButtons()}
 function init(){
  $('syncClientId').value=localStorage.getItem(CLIENT_KEY)||'';$('syncDeviceName').value=localStorage.getItem('nsh-v351-device-name')||defaultName;$('syncDeviceName').onchange=()=>localStorage.setItem('nsh-v351-device-name',$('syncDeviceName').value.trim().slice(0,60));
- $('syncConnect').onclick=connect;$('syncDisconnect').onclick=disconnect;$('syncCheck').onclick=checkCloud;$('syncUpload').onclick=uploadProgress;$('syncDownload').onclick=downloadProgress;$('syncConfirmDownload').onclick=confirmDownload;$('syncCancelDownload').onclick=clearPending;$('syncReplaceAck').onchange=setButtons;$('syncUseBranch').onclick=useBranch;$('syncExportRecovery').onclick=exportRecovery;
- window.addEventListener('studyhub:changed',()=>{if(pending&&!same(progressOf(),pending.local))clearPending();setButtons()});
- notify('Manual progress sync. Connect, then choose Upload progress or Download progress. Nothing transfers automatically.');setButtons();listRecoveries();
+ $('syncConnect').onclick=connect;$('syncDisconnect').onclick=disconnect;$('syncCheck').onclick=checkCloud;$('syncUpload').onclick=uploadProgress;$('syncDownload').onclick=downloadProgress;$('syncConfirmDownload').onclick=confirmDownload;$('syncCancelDownload').onclick=clearPending;$('syncReplaceAck').onchange=setButtons;$('syncLegacyAck').onchange=setButtons;$('syncLibrarySource').onchange=selectLibrarySource;$('syncUseBranch').onclick=useBranch;$('syncExportRecovery').onclick=exportRecovery;
+ window.addEventListener('studyhub:changed',()=>{if(pending&&(!same(progressOf(),pending.local)||!same(libraryOf(),pending.localLibrary)))clearPending();setButtons()});
+ notify('Manual progress sync. Connect, then choose Upload progress or Download progress. Download also restores missing cards and questions. Nothing transfers automatically.');setButtons();listRecoveries();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
-window.__nshSyncTest={progressOf,validateProgress,graphHeads,same,digest};
+window.__nshSyncTest={progressOf,validateProgress,graphHeads,same,digest,libraryOf,mergedLibrary};
 })();
+
