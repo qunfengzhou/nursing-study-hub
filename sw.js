@@ -1,5 +1,5 @@
-const CACHE = 'nursing-study-hub-v3-5-2-library-recovery-shell';
-const SHELL=['./','./index.html','./manifest.webmanifest?v=3.5.2','./icon-192-v351.png','./icon-512-v351.png','./icon-v351.svg','./sync.js?v=3.5.2'];
+const CACHE = 'nursing-study-hub-v3-5-3-dependent-filters-shell';
+const SHELL=['./','./index.html','./manifest.webmanifest?v=3.5.3','./icon-192-v351.png','./icon-512-v351.png','./icon-v351.svg','./sync.js?v=3.5.3'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)));
 });
@@ -21,6 +21,7 @@ self.addEventListener('fetch', event => {
   }
   event.respondWith(caches.match(request).then(hit=>hit || fetch(request)));
 });
+
 
 
 
