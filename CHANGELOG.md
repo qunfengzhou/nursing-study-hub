@@ -120,10 +120,19 @@
 
 **Implementation:** [PR #5](https://github.com/qunfengzhou/nursing-study-hub/pull/5).
 
+## V3.5.3 — Dependent Filters & Desktop Home Button
+
+- Moved the desktop Home button below the app title as a labeled capsule, without changing touch-tablet or phone navigation.
+- Disabled Course, Unit and Chapter options until their parent categories are selected.
+- Automatically selected the first valid Course, Unit and Chapter when choosing a Subject, and refreshed descendants when switching courses or units.
+- Scoped choices to the selected hierarchy, sorted numbered units/chapters naturally, and normalized inconsistent saved filters while retaining valid continuation positions.
+- Preserved global views through All subjects and parent-level All options; unselected descendant levels remain disabled.
+
 ---
 
-**Current Version:** V3.5.2
+**Current Version:** V3.5.3
 
 **Validation note:** Recent deployments were verified against their committed files and tested in isolated browser scenarios. Simulated Drive tests do not establish successful restoration of the user's actual account or acceptance on every physical device.
 
 **Current synchronization and recovery guide:** [SYNC_V351.md](SYNC_V351.md).
+
