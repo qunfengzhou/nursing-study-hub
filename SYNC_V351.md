@@ -1,30 +1,32 @@
-# Study Hub V3.5.1 — manual progress transfer
+# Study Hub V3.5.2 — Download library and progress together
 
-## Moving from V3.5
+## Recover an empty installation
 
-1. Export a full backup on each device before starting the new flow.
-2. Close old Study Hub tabs and update every device to V3.5.1. Confirm the Upload progress and Download progress buttons are visible.
-3. On the phone with the most complete learning records, connect the intended Google account and choose **Upload progress**. Confirm that this phone starts the new cloud progress flow.
-4. On the computer and tablet, connect the same Google account and choose **Download progress**. Review the source device, timestamp and record counts. If the device has local progress, acknowledge replacement before confirming. A full local recovery backup is saved first.
-5. Check Mastery, Quiz history, Wrong Answers and continuation positions on each device.
+Open Library, connect the same Google account, and choose **Download progress**. This action now restores missing flashcards and questions as well as learning records.
 
-The old V3.2/V3.5 cloud snapshots remain intact. They do not participate in this new flow, so old differences between card definitions or IPA do not become hundreds of progress conflicts. No existing device is automatically selected as authoritative: the first upload must come from the device the owner chooses.
+- New uploads include a checksummed library recovery copy alongside the progress snapshot.
+- If the current cloud version was created by V3.5.1 and contains only progress, an empty or incomplete device can select a historical Drive library backup. The preview shows its timestamp and card/question counts and requires acknowledgement that older backups may contain older text or IPA. It does not certify the contents as APPROVED.
+- When current cloud progress exists, keep that newer progress while restoring content from the selected old library backup. If only a historical full backup exists, the preview explicitly offers that backup's own progress and library.
+- If no usable cloud content copy exists, upload once from a device that still contains the library, then download on the empty device. The app does not invent missing cards or quiz questions.
+
+A full local recovery copy is saved before applying any download. Review the preview and acknowledge replacement if this device has unuploaded learning records. Existing cloud files are not overwritten or deleted.
+
+## How existing libraries are protected
+
+Downloads add missing card/question IDs and keep matching local definitions, translations, IPA, question text and source metadata. Known retired IDs stay inactive; retirement registers grow by union. The recovery flow does not import generated questions, change approval labels, or bypass the normal HOLD/import approval checks.
+
+Upload progress publishes the current learning records plus a content recovery copy. A completely empty library cannot be uploaded over the cloud version. Content-only changes can create a new revision even when learning progress has not changed. Other devices must download a newer revision before uploading.
 
 ## Everyday use
 
-Download before studying on a different device. Upload when finished. Connecting, returning to the app, going online, or studying never automatically publishes or applies progress. **Check cloud status** only reads the current revision.
+Update all devices to V3.5.2 before using the corrected flow. Download before studying on a different device; upload when finished. Connect and Check cloud status remain read-only. No transfer happens automatically.
 
-Progress includes Mastery records, quiz histories, wrong-answer events, daily completion logs, Flashcards/Quiz continuation and viewed dates, favorites and practice targets. Uploads do not carry card definitions, translations, IPA, question text, source metadata, taxonomy or the retired-card registry. Downloads preserve those local content fields. Progress for IDs absent from local content is retained; install the correct approved content bank separately when necessary.
+The transfer includes Mastery, quiz history, Wrong Answers events, daily completion logs, browsing dates, continuation, favorites and practice targets. Progress for absent or retired content IDs is preserved as history. A download does not automatically replace a local matching card with an older cloud definition.
 
-## Protection and recovery
+## Recovery and concurrency
 
-- A stale or unbound device cannot replace a newer cloud revision. It must download first. If its local progress must be kept, export the full backup before choosing a replacement.
-- Download previews are invalidated if local or cloud progress changes. A failed recovery backup or local storage write blocks the replacement.
-- Each publication creates an immutable Drive app-data file with parent revision IDs and a SHA-256 checksum. The current version is the sole unreferenced revision, not whichever device clock is latest.
-- Simultaneous uploads may both be retained as branches. Downloads pause until the owner explicitly selects which version becomes current. Selection publishes a child referencing both versions; no prior cloud files are overwritten or deleted.
-- Full local recovery copies are available under **Recovery copies on this device**. Export one and use **Backup & restore** to recover it. Browser storage removal also removes local recovery copies; exported backups remain independent.
-- Progress baselines are separate for each verified Google account. OAuth access tokens remain in memory.
+Full local recovery copies can be exported under **Recovery copies on this device**, then restored through Backup & restore. Clearing website storage removes local copies, so keep independent exported backups.
 
-## Validation limits
+Publications use immutable Drive files, parent revision IDs and checksums. Concurrent uploads remain separate versions until explicitly selected. Download previews are invalidated when local progress, local content, or cloud revisions change. Failed recovery storage or a failed local write blocks replacement. Baselines are account-specific; access tokens stay in memory.
 
-Automated tests use isolated browser storage and simulated Google authorization/Drive responses, including overlapping uploads and failed storage/network operations. No real Google account records are modified during testing. Installed iOS home-screen icons, device safe-area behavior and actual multi-device Google Drive transfer require device acceptance after deployment. Existing iOS shortcuts may retain a cached icon until re-added.
+Automated tests use isolated browser storage and simulated Google authorization/Drive HTTP. Actual user-cloud availability and real-device restoration still require acceptance after deployment. No production learning records are changed by the tests.
