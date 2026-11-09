@@ -1,6 +1,6 @@
 # Study Hub
 
-**Current deployed version: V3.5.3.** See [CHANGELOG.md](CHANGELOG.md) for version history and [SYNC_V351.md](SYNC_V351.md) for the current upload, download, and recovery flow.
+**Current deployed version: V3.5.4.** See [CHANGELOG.md](CHANGELOG.md) for version history and [SYNC_V351.md](SYNC_V351.md) for the current upload, download, and recovery flow.
 
 ## Legacy V3.2 setup notes
 
@@ -55,4 +55,5 @@ On first visit, load the site while online to install the service worker. Flashc
 
 - JavaScript syntax checked and deterministic merge tests passed.
 - Google authorization, live Drive API upload/list operations, and multi-device iOS/Android end-to-end sync are **not yet verified**: they require the owner's OAuth Client ID and consent, and live browser tests.
+
 

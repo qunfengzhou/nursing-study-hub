@@ -128,11 +128,22 @@
 - Scoped choices to the selected hierarchy, sorted numbered units/chapters naturally, and normalized inconsistent saved filters while retaining valid continuation positions.
 - Preserved global views through All subjects and parent-level All options; unselected descendant levels remain disabled.
 
+## V3.5.4 — Reviewed Vocabulary Imports
+
+- Added reusable approval validation for source-reviewed IPA banks across units while retaining the existing Unit 1 approval path.
+- Added explicit per-card exceptions for user-authorized IPA from uploaded vocabulary lists, preserving original IPA, source filenames, line numbers and source-file hashes without labeling those entries dictionary-verified.
+- Continued blocking HOLD datasets, missing IPA, inconsistent manifests and untraceable pronunciation records.
+- Showed pronunciation-review summaries and disclosed uploaded-source IPA exceptions in import and replacement previews.
+- Refreshed the offline cache and release labels. Preserved normal ID-based import merging, historical learning records, retirement protection and Google Drive behavior.
+
+*This release changes program validation only; course materials and production learning data are not included or automatically imported.*
+
 ---
 
-**Current Version:** V3.5.3
+**Current Version:** V3.5.4
 
 **Validation note:** Recent deployments were verified against their committed files and tested in isolated browser scenarios. Simulated Drive tests do not establish successful restoration of the user's actual account or acceptance on every physical device.
 
 **Current synchronization and recovery guide:** [SYNC_V351.md](SYNC_V351.md).
+
 
