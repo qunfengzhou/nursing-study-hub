@@ -1,6 +1,10 @@
 # Study Hub
 
-**Application version: V3.6.1.** See [CHANGELOG.md](CHANGELOG.md) for version history and [SYNC_V351.md](SYNC_V351.md) for the current upload, download, and recovery flow.
+**Application version: V3.6.2.** See [CHANGELOG.md](CHANGELOG.md) for version history and [SYNC_V351.md](SYNC_V351.md) for the current upload, download, and recovery flow.
+
+## V3.6.2 documentation update
+
+Updated release labels and offline shell cache identifiers. The [sync guide](SYNC_V351.md#move-synchronization-to-another-google-account) now covers account switching, OAuth Client ID reuse, backup versus Upload progress, and old-account hidden-data retention. Synchronization behavior and learning data formats are unchanged.
 
 ## V3.6.1 quiz tools
 

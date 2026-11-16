@@ -155,9 +155,20 @@
 
 **Validation:** 23 synthetic regression checks, browser import/export, full 25-question completion and reload/resume, desktop and 390px responsive layouts. Live Google account transfer and physical iOS behavior were not exercised.
 
+## V3.6.2 — Version Alignment & Account Transfer Guide
+
+- Updated application version labels, asset query versions and the offline shell cache identifier to V3.6.2.
+- Documented switching Google accounts: back up the most complete device, reconnect to the new account, upload there, then download on other devices.
+- Clarified that Export backup creates a local recovery file, while Upload progress publishes current device progress plus a library recovery copy.
+- Clarified OAuth Client ID reuse with the same Cloud application, access prerequisites, and the distinction between changing Drive accounts and retiring the Cloud project.
+- Documented old-account hidden app data, storage usage, identifying the configured app name, and optional cleanup after verifying migration and retaining backups.
+- Preserved synchronization logic, storage keys, data schemas, learning rules, import approval checks and all V3.6.1 functionality. No automatic migration or cloud deletion feature was added.
+
+**Validation:** Connector-based comparison confirmed executable inline application code is unchanged; synchronization and quiz tool files were not modified. Asset query versions match the shell cache list. Runtime/browser tests and live Google-account migration were not repeated for this version-and-documentation maintenance release.
+
 ---
 
-**Current Version:** V3.6.1
+**Current Version:** V3.6.2
 
 **Validation note:** Recent deployments were verified against their committed files and tested in isolated browser scenarios. Simulated Drive tests do not establish successful restoration of the user's actual account or acceptance on every physical device.
 

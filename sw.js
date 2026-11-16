@@ -1,5 +1,5 @@
-const CACHE = 'nursing-study-hub-v3-6-1-quiz-tools-shell';
-const SHELL=['./','./index.html','./manifest.webmanifest?v=3.6.1','./icon-192-v351.png','./icon-512-v351.png','./icon-v351.svg','./sync.js?v=3.6.1','./quiz-tools.js?v=3.6.1'];
+const CACHE = 'nursing-study-hub-v3-6-2-documentation-shell';
+const SHELL=['./','./index.html','./manifest.webmanifest?v=3.6.2','./icon-192-v351.png','./icon-512-v351.png','./icon-v351.svg','./sync.js?v=3.6.2','./quiz-tools.js?v=3.6.2'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)));
 });
