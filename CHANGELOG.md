@@ -138,12 +138,30 @@
 
 *This release changes program validation only; course materials and production learning data are not included or automatically imported.*
 
+## V3.6.1 — Wrong Answer Statistics & Mock Exams
+
+- Added Unit-level horizontal wrong-answer percentage bars using active wrong-notebook membership, with explicit empty-unit states.
+- Moved Wrong Answers into Browse and added Mock Exams under Practice; arranged home entry cards in even grids and highlighted Cards to Review in pale orange and Wrong Answers in pale red.
+- Added Library → Export & Backup with a separate Markdown export of all current wrong answers, full answer keys, explanations, hierarchy and provenance. Filenames use the device's local date and daily export counter: `Wrong_Answers_YYYYMMDD_N.md`.
+- Allowed explicitly labeled `(new)` practice questions linked to a Wrong Answers export, using new unique IDs without overwriting original questions. Existing HOLD and approved flashcard-bank checks remain in force.
+- Added single-file drag-and-drop to Unit Replacement, retaining approval validation, preview, retirement safeguards and two explicit confirmations. Invalidated stale asynchronous previews when changing files.
+- Added 25/50/75/100-question Easy and Hard mock exams, course/unit selection, balanced allocation, quota redistribution and explicit confirmation when the available bank is smaller than requested.
+- Made Hard prioritize current wrong answers, then fill from other questions without duplicates. Easy samples the eligible bank randomly with balanced Course/Unit or Unit/Chapter quotas.
+- Saved question snapshots, fixed order, first answers and resume position immediately. Added course-filtered newest-first history, completed accuracy and a clickable historical wrong-answer dialog with original options, selected/correct answers and Course/Unit/Chapter.
+- Sent mock mistakes to the existing wrong notebook; correct mock answers do not remove entries. Flashcard Hard ratings and the two-distinct-Daily-Practice-days removal rule remain unchanged.
+- Included mock exams in full backups and manual Drive progress transfer. Downloads use cloud versions for matching exam IDs and retain independent local-only exams, including when downloading an older cloud revision with no mock history.
+- Added validation and atomic storage writes so invalid mock histories or storage failures do not replace current study data. Refused stale mock writes after another tab changes local storage.
+- Refreshed offline shell caching to include quiz tools, retaining the existing update activation policy.
+
+**Validation:** 23 synthetic regression checks, browser import/export, full 25-question completion and reload/resume, desktop and 390px responsive layouts. Live Google account transfer and physical iOS behavior were not exercised.
+
 ---
 
-**Current Version:** V3.5.4
+**Current Version:** V3.6.1
 
 **Validation note:** Recent deployments were verified against their committed files and tested in isolated browser scenarios. Simulated Drive tests do not establish successful restoration of the user's actual account or acceptance on every physical device.
 
 **Current synchronization and recovery guide:** [SYNC_V351.md](SYNC_V351.md).
+
 
 

@@ -1,6 +1,12 @@
 # Study Hub
 
-**Current deployed version: V3.5.4.** See [CHANGELOG.md](CHANGELOG.md) for version history and [SYNC_V351.md](SYNC_V351.md) for the current upload, download, and recovery flow.
+**Application version: V3.6.1.** See [CHANGELOG.md](CHANGELOG.md) for version history and [SYNC_V351.md](SYNC_V351.md) for the current upload, download, and recovery flow.
+
+## V3.6.1 quiz tools
+
+Wrong Answers now includes Unit percentage bars. Library → Export & Backup exports current wrong answers as Markdown for creating linked new practice questions. Practice → Mock Exams creates resumable Easy/Hard exams with immutable question snapshots and a course-filtered history. Unit Replacement supports drag-and-drop with the existing approval and confirmation checks.
+
+See [QUIZ_V361.md](QUIZ_V361.md) for behavior, persistence, and validation. Run the synthetic regression suite with `node tests/quiz-tools.test.cjs`.
 
 ## Legacy V3.2 setup notes
 
@@ -55,5 +61,6 @@ On first visit, load the site while online to install the service worker. Flashc
 
 - JavaScript syntax checked and deterministic merge tests passed.
 - Google authorization, live Drive API upload/list operations, and multi-device iOS/Android end-to-end sync are **not yet verified**: they require the owner's OAuth Client ID and consent, and live browser tests.
+
 
 
