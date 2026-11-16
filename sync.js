@@ -13,7 +13,7 @@ const same=(a,b)=>stable(a)===stable(b);
 let device=localStorage.getItem(DEVICE_KEY);if(!device){device=crypto.randomUUID();localStorage.setItem(DEVICE_KEY,device)}
 const defaultName=/iPad|Tablet/i.test(navigator.userAgent)?'Tablet':/iPhone|Android.*Mobile/i.test(navigator.userAgent)?'Phone':'Computer';
 let token='',expiry=0,account='',email='',meta={},busy=false,epoch=0,pending=null,cloud=null,tokenClient=null;
-const settingsKeys=['freeReview','quizReview','quizPractice','dailyTarget','dailyQuizTarget','favorites'];
+const settingsKeys=['freeReview','quizReview','quizPractice','dailyTarget','dailyQuizTarget','favorites','mockExams'];
 function progressOf(data=state){const settings={};for(const key of settingsKeys)if(Object.hasOwn(data.settings||{},key))settings[key]=clone(data.settings[key]);return {progress:clone(data.progress||{}),quizHistory:clone(data.quizHistory||{}),dailyLog:clone(data.dailyLog||{}),settings}}
 function validateProgress(x){
  if(!object(x)||!object(x.progress)||!object(x.quizHistory)||!object(x.dailyLog)||!object(x.settings))throw Error('Invalid progress file. Nothing was changed.');
@@ -26,9 +26,10 @@ function validateProgress(x){
   const d=x.settings[key];if(!object(d)||!object(d.views)||!object(d.sessions)||Object.values(d.views).some(t=>typeof t!=='number'||!Number.isFinite(t)||t<0))throw Error('Invalid continuation data.');
   for(const s of Object.values(d.sessions))if(!object(s)||!object(s.filter)||!['subject','course','unit','chapter'].every(k=>typeof s.filter[k]==='string')||!Number.isFinite(s.updatedAt))throw Error('Invalid saved session.');
  }
+ if(Object.hasOwn(x.settings,'mockExams'))validateMockExamData(x.settings.mockExams);
  if(Object.hasOwn(x.settings,'quizPractice')){
   const q=x.settings.quizPractice;if(!object(q)||!object(q.events))throw Error('Invalid quiz practice events.');
-  for(const [id,e] of Object.entries(q.events))if(!object(e)||e.id!==id||typeof e.questionId!=='string'||typeof e.correct!=='boolean'||!Number.isFinite(e.at)||e.at<0||typeof e.day!=='string'||!['legacy','daily','regular'].includes(e.mode))throw Error('Invalid quiz attempt.');
+  for(const [id,e] of Object.entries(q.events))if(!object(e)||e.id!==id||typeof e.questionId!=='string'||typeof e.correct!=='boolean'||!Number.isFinite(e.at)||e.at<0||typeof e.day!=='string'||!['legacy','daily','regular','mock'].includes(e.mode))throw Error('Invalid quiz attempt.');
  }
  return clone(x);
 }
@@ -56,7 +57,7 @@ function connected(){return !!account&&!!token&&Date.now()<expiry-60000}
 function notify(s){$('syncStatus').textContent=s}
 function persistMeta(){localStorage.setItem(META_PREFIX+account,JSON.stringify(meta))}
 function dirty(){return !meta.baseline||!same(progressOf(),meta.baseline)}
-function hasProgress(p){return Object.keys(p.progress).length||Object.keys(p.quizHistory).length||Object.keys(p.dailyLog).length||['freeReview','quizReview','quizPractice'].some(k=>['views','events','sessions'].some(field=>Object.keys(p.settings[k]?.[field]||{}).length))}
+function hasProgress(p){return Object.keys(p.settings.mockExams?.exams||{}).length||Object.keys(p.progress).length||Object.keys(p.quizHistory).length||Object.keys(p.dailyLog).length||['freeReview','quizReview','quizPractice'].some(k=>['views','events','sessions'].some(field=>Object.keys(p.settings[k]?.[field]||{}).length))}
 function setButtons(){
  $('syncConnect').disabled=busy;$('syncConnect').textContent=connected()?`Connected: ${email}`:'Connect Google Drive';
  for(const id of ['syncUpload','syncDownload','syncCheck'])$(id).disabled=busy||!connected();
@@ -87,7 +88,7 @@ async function readRevision(file){const p=await (await api('https://www.googleap
 function cloudSignature(c){return c.heads.map(h=>h.file.id+':'+h.file.appProperties.digest).sort().join('|')}
 async function readCloud(){const files=await listFiles(),heads=graphHeads(files);const entries=[];for(const f of heads)entries.push(await readRevision(f));return {heads:entries,files}}
 function formatTime(h){return new Date(h.file.createdTime||h.payload.createdAt).toLocaleString()}
-function counts(data){return `${Object.keys(data.progress).length} card progress records · ${Object.keys(data.quizHistory).length} quiz histories`}
+function counts(data){return `${Object.keys(data.progress).length} card progress records · ${Object.keys(data.quizHistory).length} quiz histories · ${Object.keys(data.settings?.mockExams?.exams||{}).length} mock exams`}
 function showCloud(c){
  cloud=c;$('syncBranches').classList.toggle('hidden',c.heads.length<2);$('syncBranchChoice').replaceChildren();
  if(!c.heads.length)$('syncCloudState').textContent='No V3.5.1 cloud progress yet. On your most up-to-date device (your phone), choose Upload progress first. Old cloud backups remain untouched.';
@@ -129,10 +130,12 @@ async function uploadProgress(){clearPending();return run(async e=>{
 async function applyProgress(data,e,library){
  validateProgress(data);unchangedSession(e);
  const next=clone(state);if(library){const merged=mergedLibrary(library).data;next.cards=merged.cards;next.questions=merged.questions;next.retiredCardIds=merged.retiredCardIds;next.settings={...next.settings,...merged.settings}}next.progress=clone(data.progress);next.quizHistory=clone(data.quizHistory);next.dailyLog=clone(data.dailyLog);next.settings||={};
+ const retainedMockExams=mergeMockExamHistory(next.settings.mockExams,data.settings.mockExams);
  for(const key of settingsKeys){if(Object.hasOwn(data.settings,key))Object.defineProperty(next.settings,key,{value:clone(data.settings[key]),enumerable:true,writable:true,configurable:true});else delete next.settings[key]}
+ if(retainedMockExams)next.settings.mockExams=retainedMockExams;
  next.settings.dailyTarget||=20;next.settings.favorites||=[];
  try{localStorage.setItem(KEY,JSON.stringify(next))}catch{throw Error('Device storage is full. Cloud progress was not applied.');}
- state=next;dailyActive=false;dailyQueue=[];dailyUndo=null;if(typeof stopDailyQuiz==='function')stopDailyQuiz();freeReviewHeldId=quizHeldId=null;cardPos=quizPos=0;flipped=translation=false;
+ state=next;dailyActive=false;dailyQueue=[];dailyUndo=null;if(typeof stopDailyQuiz==='function')stopDailyQuiz();freeReviewHeldId=quizHeldId=null;cardPos=quizPos=0;flipped=translation=false;if(typeof resetMockUI==='function')resetMockUI();
  // Restore visible continuation only when the user next opens its page.
  window.dispatchEvent(new Event('studyhub:changed'));render();
 }
@@ -178,4 +181,5 @@ function init(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 window.__nshSyncTest={progressOf,validateProgress,graphHeads,same,digest,libraryOf,mergedLibrary};
 })();
+
 
